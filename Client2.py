@@ -6,13 +6,13 @@ import getpass
 
 def recv_response(sock):
     """Receive response with timeout and progress indication for large responses."""
-    sock.settimeout(600)  # 30 second timeout
+    sock.settimeout(600) 
     buffer = b""
     total_bytes = 0
     
     try:
         while b"<<END>>\n" not in buffer:
-            chunk = sock.recv(8192)  # Larger buffer
+            chunk = sock.recv(8192)
             if not chunk:
                 break
             buffer += chunk
@@ -29,7 +29,7 @@ def recv_response(sock):
         print("[System Message] Response timeout - server may be slow or unresponsive")
         return ""
     finally:
-        sock.settimeout(None)  # Reset timeout
+        sock.settimeout(None) 
     
     text = buffer.decode(errors='ignore')
     return text.replace("<<END>>\n", "")
@@ -45,7 +45,6 @@ def parse_address(addr_str):
 
 
 def open_connection(host, port):
-    """Establishes a TCP connection and consumes the CLIENT_ID greeting."""
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect((host, port))
     return client
@@ -177,32 +176,6 @@ def main():
                 continue
 
             client.send(sub_command.encode())
-            print(recv_response(client))
-            client.close()
-
-        # -------------------------
-        # AUTH <addr>:<port> <user> <pass>
-        # -------------------------
-        elif command == "AUTH":
-            if len(tokens) != 4:
-                print("[System Message] Usage: AUTH <addr>:<port> <user> <pass>")
-                continue
-
-            addr_str, user, password = tokens[1], tokens[2], tokens[3]
-
-            try:
-                host, port = parse_address(addr_str)
-            except ValueError as e:
-                print(f"[System Message] Invalid address: {e}")
-                continue
-
-            try:
-                client = open_connection(host, port)
-            except Exception as e:
-                print(f"[System Message] Connection failed: {e}")
-                continue
-
-            client.send(f"AUTH {user} {password}".encode())
             print(recv_response(client))
             client.close()
 

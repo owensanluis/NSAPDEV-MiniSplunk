@@ -285,20 +285,22 @@ def handle_client(conn, addr):
 
             # SEARCH KEYWORD
             elif command == "search_keyword":
-                results = search_keyword(parts[1])
-                print(f"[NOTICE] {addr} queried keyword \"{parts[1]}\"", flush=True)
+                query   = " ".join(parts[1:])
+                results = search_keyword([query])
+                print(f"[NOTICE] {addr} queried keyword \"{query}\"", flush=True)
                 if not results:
                     send_response(conn, "[Server Response] No logs found for the specified keyword.")
                 else:
                     numbered_results = "\n".join(f"{i+1}. {log}" for i, log in enumerate(results))
-                    send_response(conn, f"[Server Response] {len(results)} log(s) found for the keyword \"{parts[1]}\":\n"
+                    send_response(conn, f"[Server Response] {len(results)} log(s) found for the keyword \"{query}\":\n"
                                         + numbered_results)
 
             # COUNT KEYWORD
             elif command == "count_keyword":
-                occurrences, indexed_entries = count_keyword(parts[1])
-                print(f"[NOTICE] {addr} counted keyword \"{parts[1]}\"", flush=True)
-                send_response(conn, f"[Server Response] The keyword \"{parts[1]}\" appeared "
+                query = " ".join(parts[1:])
+                occurrences, indexed_entries = count_keyword(query)
+                print(f"[NOTICE] {addr} counted keyword \"{query}\"", flush=True)
+                send_response(conn, f"[Server Response] The keyword \"{query}\" appeared "
                                     f"{occurrences} time(s) in {indexed_entries} indexed log entrie(s).")
 
             # COUNT LOGS
@@ -314,7 +316,7 @@ def handle_client(conn, addr):
                     snapshot = list(log_data)
                 if not snapshot:
                     send_response(conn, "[Server Response] No logs available.")
-                    print(f"[NOTICE] {addr} listed logs — none available.", flush=True)
+                    print(f"[NOTICE] {addr} listed logs: none available.", flush=True)
                 else:
                     logs = "\n".join(e.getLog() for e in snapshot)
                     print(f"[NOTICE] {addr} listed all {len(snapshot)} logs.", flush=True)
@@ -327,7 +329,7 @@ def handle_client(conn, addr):
                     log_data.clear()
                     _clear_indexes()
                 send_response(conn, f"[Server Response] Database purged. {count} log entries removed.")
-                print(f"[ADMIN ACTION] {addr} purged the database — {count} entries removed.", flush=True)
+                print(f"[ADMIN ACTION] {addr} purged the database. {count} entries removed.", flush=True)
 
             else:
                 send_response(conn, "[Server Response] Unknown Command. Please try again.")

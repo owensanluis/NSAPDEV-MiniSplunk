@@ -195,12 +195,6 @@ def main():
                 print(f"[System Message] Invalid address: {e}")
                 continue
 
-            # Credentials must be sent in the same connection since auth
-            # state is per-session on the server.
-            print("[System Message] Admin credentials required to purge.")
-            user = input("  Username: ").strip()
-            password = getpass.getpass("  Password: ")
-
             try:
                 print(f"[System Message] Connecting to {addr_str} to purge records...")
                 client = open_connection(host, port)
@@ -208,13 +202,8 @@ def main():
                 print(f"[System Message] Connection failed: {e}")
                 continue
 
-            client.send(f"AUTH {user} {password}".encode())
-            auth_response = recv_response(client)
-            print(auth_response)
-
-            if "Successful" in auth_response:
-                client.send(b"PURGE")
-                print(recv_response(client))
+            client.send(b"PURGE")
+            print(recv_response(client))
 
             client.close()
 

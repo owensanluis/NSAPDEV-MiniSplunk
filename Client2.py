@@ -5,12 +5,32 @@ import getpass
 
 
 def recv_response(sock):
+    """Receive response with timeout and progress indication for large responses."""
+    sock.settimeout(600)  # 30 second timeout
     buffer = b""
-    while b"<<END>>\n" not in buffer:
-        chunk = sock.recv(4096)
-        if not chunk:
-            break
-        buffer += chunk
+    total_bytes = 0
+    
+    try:
+        while b"<<END>>\n" not in buffer:
+            chunk = sock.recv(8192)  # Larger buffer
+            if not chunk:
+                break
+            buffer += chunk
+            total_bytes += len(chunk)
+            
+            # Show progress for large responses
+            if total_bytes > 100000:  # 100KB
+                print(f"[System Message] Receiving response... ({total_bytes//1024}KB)", end='\r', flush=True)
+        
+        if total_bytes > 100000:
+            print(f"[System Message] Response received ({total_bytes//1024}KB)")
+            
+    except socket.timeout:
+        print("[System Message] Response timeout - server may be slow or unresponsive")
+        return ""
+    finally:
+        sock.settimeout(None)  # Reset timeout
+    
     text = buffer.decode(errors='ignore')
     return text.replace("<<END>>\n", "")
 

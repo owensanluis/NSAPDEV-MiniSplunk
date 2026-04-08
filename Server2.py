@@ -46,7 +46,9 @@ def parse_syslog(line):
     if not match:
         return None
 
-    timestamp, hostname, daemon, message = match.groups()
+    timestamp, hostname, daemon_raw, message = match.groups()
+
+    daemon = daemon_raw.split("[")[0] if "[" in daemon_raw else daemon_raw
 
     msg_lower = message.lower()
     if re.search(r'\b(emerg|emergency)\b', msg_lower):
@@ -72,7 +74,7 @@ def parse_syslog(line):
 # =========================
 # Index Management
 # =========================
-def _index_entry(entry):
+def index_entry(entry):
     """Add a LogEntry to all inverted indexes. Caller must hold log_lock."""
     index_hostname[entry.hostname.lower()].append(entry)
     index_daemon[entry.daemon.lower()].append(entry)
@@ -112,6 +114,7 @@ def search_by_hostname(value):
 
 
 def search_by_daemon(value):
+    value_lower = value.lower()
     with log_lock:
         entries = list(index_daemon.get(value.lower(), []))
     return [e.getLog() for e in entries]
@@ -177,16 +180,6 @@ def recv_line(conn):
     return buffer.decode().strip()
 
 
-def recv_exact(conn, size):
-    buffer = b""
-    while len(buffer) < size:
-        chunk = conn.recv(size - len(buffer))
-        if not chunk:
-            break
-        buffer += chunk
-    return buffer
-
-
 def send_response(conn, message):
     if not message.endswith("\n"):
         message += "\n"
@@ -220,27 +213,39 @@ def handle_client(conn, addr):
 
             # ---- INGEST ----
             elif command == "ingest":
-                with log_lock:
-                    send_response(conn, "[Server Response] READY")
+                send_response(conn, "[Server Response] READY")
 
-                    filesize_line = recv_line(conn)
-                    filename_line = recv_line(conn)
-                    try:
-                        filesize = int(filesize_line)
-                    except ValueError:
-                        send_response(conn, "[Server Response] ERROR: Invalid filesize")
-                        continue
+                filesize_line = recv_line(conn)
+                filename_line = recv_line(conn)
+                try:
+                    filesize = int(filesize_line)
+                except ValueError:
+                    send_response(conn, "[Server Response] ERROR: Invalid filesize")
+                    continue
 
-                    raw_bytes = recv_exact(conn, filesize)
-                    raw       = raw_bytes.decode(errors='ignore')
+                remaining = filesize
+                buffer = b""
+                parsed_count = 0
 
-                    parsed_count = 0
-                    for line in raw.splitlines():
+                while remaining > 0:
+                    chunk = conn.recv(min(4096, remaining))
+                    if not chunk:
+                        break
+
+                    buffer += chunk
+                    remaining -= len(chunk)
+
+                    # Process complete lines
+                    while b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        line = line.decode(errors='ignore')
+
                         entry = parse_syslog(line)
                         if entry:
-                            log_data.append(entry)
-                            _index_entry(entry)   # build indexes on ingest
-                            parsed_count += 1
+                            with log_lock:
+                                log_data.append(entry)
+                                index_entry(entry)
+                                parsed_count += 1
 
                 send_response(
                     conn,
@@ -259,8 +264,9 @@ def handle_client(conn, addr):
                 if not results:
                     send_response(conn, f"[Server Response] No logs found for the specified date.")
                 else:
+                    numbered_results = "\n".join(f"{i+1}. {log}" for i, log in enumerate(results))
                     send_response(conn, f"[Server Response] {len(results)} log(s) found for the date \"{query}\":\n"
-                                        + "\n".join(results))
+                                        + numbered_results)
 
             # ---- SEARCH_HOST ----
             elif command == "search_host":
@@ -269,8 +275,9 @@ def handle_client(conn, addr):
                 if not results:
                     send_response(conn, "[Server Response] No logs found for the specified host.")
                 else:
+                    numbered_results = "\n".join(f"{i+1}. {log}" for i, log in enumerate(results))
                     send_response(conn, f"[Server Response] {len(results)} log(s) found for the host \"{parts[1]}\":\n"
-                                        + "\n".join(results))
+                                        + numbered_results)
 
             # ---- SEARCH_DAEMON ----
             elif command == "search_daemon":
@@ -279,8 +286,9 @@ def handle_client(conn, addr):
                 if not results:
                     send_response(conn, "[Server Response] No logs found for the specified daemon.")
                 else:
+                    numbered_results = "\n".join(f"{i+1}. {log}" for i, log in enumerate(results))
                     send_response(conn, f"[Server Response] {len(results)} log(s) found for the daemon \"{parts[1]}\":\n"
-                                        + "\n".join(results))
+                                        + numbered_results)
 
             # ---- SEARCH_SEVERITY ----
             elif command == "search_severity":
@@ -289,8 +297,9 @@ def handle_client(conn, addr):
                 if not results:
                     send_response(conn, "[Server Response] No logs found for the specified severity.")
                 else:
+                    numbered_results = "\n".join(f"{i+1}. {log}" for i, log in enumerate(results))
                     send_response(conn, f"[Server Response] {len(results)} log(s) found for the severity \"{parts[1]}\":\n"
-                                        + "\n".join(results))
+                                        + numbered_results)
 
             # ---- SEARCH_KEYWORD ----
             elif command == "search_keyword":
@@ -299,8 +308,9 @@ def handle_client(conn, addr):
                 if not results:
                     send_response(conn, "[Server Response] No logs found for the specified keyword.")
                 else:
+                    numbered_results = "\n".join(f"{i+1}. {log}" for i, log in enumerate(results))
                     send_response(conn, f"[Server Response] {len(results)} log(s) found for the keyword \"{parts[1]}\":\n"
-                                        + "\n".join(results))
+                                        + numbered_results)
 
             # ---- COUNT_KEYWORD ----
             elif command == "count_keyword":
